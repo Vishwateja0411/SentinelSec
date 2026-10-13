@@ -1,3 +1,4 @@
+import html
 import io
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -122,6 +123,8 @@ class ReportService:
         # Methodology & Execution Details
         md.append("## 3. Assessment Methodology & Inventory Scope")
         md.append(f"- **Scan Profile:** `{assessment.profile}`")
+        if assessment.profile == "dynamic_dast" or "runtime_observations" in (assessment.executed_methods or []):
+            md.append("- **Evaluation Engine:** Dynamic Application Security Testing (DAST - Runtime Observation)")
         md.append(f"- **Started At:** {assessment.started_at or 'N/A'}")
         md.append(f"- **Completed At:** {assessment.completed_at or 'N/A'}")
         if assessment.target_ip:
@@ -129,6 +132,7 @@ class ReportService:
         if assessment.open_ports:
             md.append(f"- **Open Ports Inventory:** `{ports_summary}`")
         md.append(f"- **Executed Assessment Methods:** `{', '.join(assessment.executed_methods or []) or 'N/A'}`")
+
         md.append(f"- **Incomplete Checks / Exceptions:** {assessment.error_summary or assessment.incomplete_checks or 'None'}")
         md.append("")
 
@@ -142,27 +146,22 @@ class ReportService:
                 md.append(f"### 4.{idx}. [{f.severity.value.upper()}] {f.title}")
                 md.append(f"- **Finding ID:** `{f.id}`")
                 md.append(f"- **Affected Component / URL:** `{f.affected_endpoint}`")
-                if f.check_method == "runtime_observations" or not f.source_file:
-                    md.append("- **Assessment Method:** `Dynamic Application Security Testing (DAST - Runtime Observation)`")
-                    md.append(f"- **Tested Live Endpoint:** `{f.affected_endpoint}`")
-                    if f.target_ip:
-                        md.append(f"- **Target IP:** `{f.target_ip}`")
-                else:
+                if f.target_ip:
+                    md.append(f"- **Target IP:** `{f.target_ip}`")
+                if f.source_file:
                     loc = f"{f.source_file}"
                     if f.source_line_start:
                         loc += f":L{f.source_line_start}"
                         if f.source_line_end and f.source_line_end != f.source_line_start:
                             loc += f"-L{f.source_line_end}"
-                    md.append(f"- **Assessment Method:** `{f.check_method.replace('_', ' ').title()}`")
                     md.append(f"- **Source Code Location:** `{loc}`")
-                    if f.target_ip:
-                        md.append(f"- **Target IP:** `{f.target_ip}`")
                 md.append(f"- **OWASP Top 10:2025 Category:** {f.owasp_category}")
                 md.append(f"- **CWE Identifier:** {f.cwe_id or 'N/A'}")
                 md.append(f"- **CVSS v3.1 Score:** `{f.cvss_score if f.cvss_score is not None else 'N/A'}`")
                 if f.cvss_rationale:
                     md.append(f"- **CVSS Vector & Rationale:** {f.cvss_rationale}")
                 md.append(f"- **Detection Tool:** `{f.tool}` (v{f.tool_version or '1.0.0'})")
+                md.append(f"- **Check Method:** `{f.check_method}`")
                 md.append(f"- **Validation Status:** `{f.validation_status.value}` (Confidence: {f.confidence})")
                 md.append(f"- **Remediation Verification Status:** `{f.remediation_verification_status}`")
                 md.append("")
@@ -362,27 +361,10 @@ class ReportService:
             row = matrix.get(code, {})
             status_val = row.get("status", "not_assessed")
             count = str(row.get("findings_count", 0))
-            raw_methods = row.get("methods_evaluated", [])
-            labels = []
-            for rm in raw_methods:
-                if rm == "runtime_observations":
-                    labels.append("DAST (Runtime)")
-                elif rm == "source_code_analysis":
-                    labels.append("SAST (Code)")
-                elif rm == "dependency_analysis":
-                    labels.append("SCA (Deps)")
-                elif rm == "configuration_checks":
-                    labels.append("Config")
-                elif rm == "regression_verification":
-                    labels.append("Regression")
-                elif rm == "manual_review":
-                    labels.append("Manual")
-                else:
-                    labels.append(rm[:12])
-            methods = ", ".join(labels) or "None"
-            owasp_data.append([code, m["name"][:28], status_val.replace("_", " ").title(), count, methods])
+            methods = ", ".join(row.get("methods_evaluated", [])) or "None"
+            owasp_data.append([code, m["name"][:30], status_val.replace("_", " ").title(), count, methods[:30]])
 
-        owasp_table = Table(owasp_data, colWidths=[0.55 * inch, 2.15 * inch, 1.7 * inch, 0.7 * inch, 2.4 * inch])
+        owasp_table = Table(owasp_data, colWidths=[0.6 * inch, 2.2 * inch, 1.8 * inch, 0.7 * inch, 1.9 * inch])
         owasp_table.setStyle(
             TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
@@ -452,22 +434,15 @@ class ReportService:
                     )
                 )
 
-                if f.check_method == "runtime_observations" or not f.source_file:
-                    loc_display = "Method: DAST (Runtime)"
-                elif f.check_method == "dependency_analysis":
-                    loc_display = "Method: SCA (Deps)"
-                else:
-                    loc_str = f.source_file or "Code"
-                    if f.source_line_start:
-                        loc_str += f":L{f.source_line_start}"
-                    loc_display = f"Source: {loc_str[:18]}"
-
+                loc_str = f.source_file or "N/A"
+                if f.source_file and f.source_line_start:
+                    loc_str += f":L{f.source_line_start}"
                 f_meta = [
                     [
                         f"CVSS: {f.cvss_score if f.cvss_score is not None else 'N/A'}",
                         f"CWE: {f.cwe_id or 'N/A'}",
                         f"OWASP: {f.owasp_category.split(':')[0] if f.owasp_category else 'N/A'}",
-                        loc_display,
+                        f"Source: {loc_str[:25]}",
                     ]
                 ]
                 fmt_table = Table(f_meta, colWidths=[1.3 * inch, 1.8 * inch, 1.8 * inch, 2.3 * inch])
@@ -480,25 +455,27 @@ class ReportService:
                 )
                 story.append(fmt_table)
 
-                story.append(Paragraph(f"<b>Affected:</b> {f.affected_endpoint}", normal))
-                story.append(Paragraph(f"<b>Description:</b> {f.description}", normal))
+                safe_endpoint = html.escape(f.affected_endpoint or "")
+                safe_desc = html.escape(f.description or "")
+                story.append(Paragraph(f"<b>Affected:</b> {safe_endpoint}", normal))
+                story.append(Paragraph(f"<b>Description:</b> {safe_desc}", normal))
                 if f.why_vulnerable:
-                    story.append(Paragraph(f"<b>Root Cause:</b> {f.why_vulnerable}", normal))
-                if f.check_method == "runtime_observations" or not f.source_file:
-                    story.append(Paragraph("<b>Observed DAST Wire Evidence (HTTP Dialogue):</b>", normal))
-                else:
-                    story.append(Paragraph("<b>Observed Evidence:</b>", normal))
-                evidence_text = f.evidence.replace("\n", "<br/>")[:500]
+                    safe_why = html.escape(f.why_vulnerable)
+                    story.append(Paragraph(f"<b>Root Cause:</b> {safe_why}", normal))
+                story.append(Paragraph("<b>Observed Evidence:</b>", normal))
+                evidence_text = html.escape(f.evidence[:600]).replace("\n", "<br/>")
                 story.append(Paragraph(evidence_text, code_style))
 
                 if f.secure_code_example:
                     story.append(Paragraph("<b>Remediated Code Example:</b>", normal))
-                    example_text = f.secure_code_example.replace("\n", "<br/>")[:500]
+                    example_text = html.escape(f.secure_code_example[:600]).replace("\n", "<br/>")
                     story.append(Paragraph(example_text, code_style))
 
-                story.append(Paragraph(f"<b>Remediation:</b> {f.remediation}", normal))
+                safe_remediation = html.escape(f.remediation or "")
+                story.append(Paragraph(f"<b>Remediation:</b> {safe_remediation}", normal))
                 story.append(Spacer(1, 3))
                 story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e2e8f0"), spaceAfter=5))
+
 
         # Disclaimer Footer
         story.append(Spacer(1, 8))
