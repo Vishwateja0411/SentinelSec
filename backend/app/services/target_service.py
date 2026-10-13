@@ -106,3 +106,24 @@ class TargetService:
             )
 
         return target
+
+    @staticmethod
+    async def delete_target(db: AsyncSession, target_id: str) -> bool:
+        """
+        Delete a target and its associated assessment records.
+        Returns True if deleted, False if target not found.
+        """
+        target = await TargetService.get_target_by_id(db, target_id)
+        if not target:
+            return False
+
+        await db.delete(target)
+        await db.commit()
+
+        log_structured(
+            logger,
+            logging.INFO,
+            "Target record deleted successfully",
+            target_id=target_id,
+        )
+        return True

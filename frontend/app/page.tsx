@@ -8,7 +8,7 @@ import { TargetList } from '@/components/TargetList';
 import { AssessmentList } from '@/components/AssessmentList';
 import { ScanResultsView } from '@/components/ScanResultsView';
 import { AssessmentCreateModal } from '@/components/AssessmentCreateModal';
-import { fetchHealth, fetchTargets, fetchAssessments } from '@/lib/api';
+import { fetchHealth, fetchTargets, fetchAssessments, deleteTarget } from '@/lib/api';
 import { HealthResponse, Target, Assessment } from '@/lib/types';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -81,6 +81,13 @@ export default function Home() {
   const handleTargetCreated = (newTarget: Target) => {
     setTargets((prev) => [newTarget, ...prev]);
     setTotal((prev) => prev + 1);
+  };
+
+  const handleTargetDeleted = async (deletedId: string) => {
+    await deleteTarget(deletedId);
+    setTargets((prev) => prev.filter((t) => t.id !== deletedId));
+    setTotal((prev) => Math.max(0, prev - 1));
+    loadAssessments();
   };
 
   const handleAssessmentCreated = (newAssessment: Assessment) => {
@@ -183,6 +190,7 @@ export default function Home() {
               error={targetsError}
               onRefresh={() => loadTargets(skip)}
               onPageChange={(newSkip) => setSkip(newSkip)}
+              onDeleteTarget={handleTargetDeleted}
             />
           </div>
         )}

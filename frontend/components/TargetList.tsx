@@ -1,8 +1,20 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Target } from '@/lib/types';
-import { Globe, Terminal, CheckCircle2, RefreshCw, AlertCircle, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Globe,
+  Terminal,
+  CheckCircle2,
+  RefreshCw,
+  AlertCircle,
+  Inbox,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
+  AlertTriangle,
+  X,
+} from 'lucide-react';
 
 interface TargetListProps {
   targets: Target[];
@@ -13,6 +25,7 @@ interface TargetListProps {
   error: string | null;
   onRefresh: () => void;
   onPageChange: (newSkip: number) => void;
+  onDeleteTarget?: (targetId: string) => Promise<void>;
 }
 
 export const TargetList: React.FC<TargetListProps> = ({
@@ -24,9 +37,28 @@ export const TargetList: React.FC<TargetListProps> = ({
   error,
   onRefresh,
   onPageChange,
+  onDeleteTarget,
 }) => {
+  const [targetToDelete, setTargetToDelete] = useState<Target | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const currentPage = Math.floor(skip / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  const handleConfirmDelete = async () => {
+    if (!targetToDelete || !onDeleteTarget) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDeleteTarget(targetToDelete.id);
+      setTargetToDelete(null);
+    } catch (err: any) {
+      setDeleteError(err.message || 'Failed to delete target. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="rounded-xl border border-navy-700 bg-navy-800/80 shadow-xl overflow-hidden backdrop-blur-sm">
@@ -97,7 +129,8 @@ export const TargetList: React.FC<TargetListProps> = ({
                 <th scope="col" className="px-5 py-3">Target Endpoint</th>
                 <th scope="col" className="px-5 py-3">Attestation Record</th>
                 <th scope="col" className="px-5 py-3">UTC Registered</th>
-                <th scope="col" className="px-5 py-3 text-right">Target ID</th>
+                <th scope="col" className="px-5 py-3">Target ID</th>
+                <th scope="col" className="px-5 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-navy-700/60 font-sans">
@@ -143,10 +176,22 @@ export const TargetList: React.FC<TargetListProps> = ({
                   </td>
 
                   {/* Target ID */}
-                  <td className="px-5 py-3.5 whitespace-nowrap text-right font-mono text-xs text-slate-400">
+                  <td className="px-5 py-3.5 whitespace-nowrap font-mono text-xs text-slate-400">
                     <span title={target.id} className="bg-navy-850 px-2 py-1 rounded border border-navy-700">
                       {target.id.substring(0, 8)}...
                     </span>
+                  </td>
+
+                  {/* Actions / Delete Button */}
+                  <td className="px-5 py-3.5 whitespace-nowrap text-right">
+                    <button
+                      onClick={() => setTargetToDelete(target)}
+                      className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 border border-rose-500/30 transition-all shadow-sm hover:shadow-rose-900/20 group"
+                      title={`Delete target ${target.target}`}
+                    >
+                      <Trash2 className="h-3 w-3 text-rose-400 group-hover:scale-110 transition-transform" />
+                      <span>Delete</span>
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -179,6 +224,87 @@ export const TargetList: React.FC<TargetListProps> = ({
             >
               <ChevronRight className="h-4 w-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {targetToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/80 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-navy-700 bg-navy-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/30 text-rose-400">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Delete Authorized Target</h3>
+                  <p className="text-xs text-slate-400">This action will permanently remove this target.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setTargetToDelete(null);
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-navy-800 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-navy-850/80 border border-navy-750 space-y-2 text-xs">
+              <div>
+                <span className="text-slate-400">Target Endpoint:</span>
+                <p className="font-mono text-white font-semibold break-all mt-0.5">{targetToDelete.target}</p>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                <span>Type: <strong className="text-slate-200">{targetToDelete.type.toUpperCase()}</strong></span>
+                <span>ID: {targetToDelete.id.slice(0, 12)}...</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Deleting this target will also cascade and remove any associated assessment runs and technical findings.
+            </p>
+
+            {deleteError && (
+              <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                onClick={() => {
+                  setTargetToDelete(null);
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+                className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-navy-800 hover:bg-navy-750 border border-navy-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 transition-all shadow-lg shadow-rose-900/30 flex items-center space-x-2 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Delete Target</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

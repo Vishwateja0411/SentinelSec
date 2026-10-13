@@ -91,3 +91,28 @@ async def get_target(
             detail=f"Target with ID '{target_id}' was not found.",
         )
     return TargetResponse.model_validate(target)
+ 
+ 
+@router.delete(
+    "/targets/{target_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete target by ID",
+    description="Deletes a registered target and any associated assessment records.",
+)
+async def delete_target(
+    target_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    deleted = await TargetService.delete_target(db, target_id)
+    if not deleted:
+        log_structured(
+            logger,
+            logging.INFO,
+            "Target deletion failed - not found",
+            target_id=target_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Target with ID '{target_id}' was not found.",
+        )
+    return None

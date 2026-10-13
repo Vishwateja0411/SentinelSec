@@ -184,3 +184,30 @@ async def test_target_pagination(client: AsyncClient):
     assert data2["total"] == 5
     assert len(data2["items"]) == 2
     assert data2["items"][0]["id"] != data1["items"][0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_delete_target_success_and_not_found(client: AsyncClient):
+    # 1. Create a target
+    resp = await client.post(
+        "/api/targets",
+        json={
+            "target": "https://delete-me.internal",
+            "type": "url",
+            "authorization_attestation": True,
+        },
+    )
+    assert resp.status_code == 201
+    target_id = resp.json()["id"]
+
+    # 2. Delete the target
+    del_resp = await client.delete(f"/api/targets/{target_id}")
+    assert del_resp.status_code == 204
+
+    # 3. Verify it is gone
+    get_resp = await client.get(f"/api/targets/{target_id}")
+    assert get_resp.status_code == 404
+
+    # 4. Deleting again returns 404
+    del_again = await client.delete(f"/api/targets/{target_id}")
+    assert del_again.status_code == 404
