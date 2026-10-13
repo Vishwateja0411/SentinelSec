@@ -1,0 +1,12 @@
+# SentinelSec Isolated Scanner Integration Placeholder Container
+# In Phase 0/1: No scanning tools or attack execution binaries are installed.
+# This container acts solely as an isolated infrastructure placeholder.
+FROM alpine:3.19
+
+RUN adduser -D -u 1000 scanneruser
+USER scanneruser
+
+WORKDIR /home/scanneruser
+
+# Safe idle loop placeholder
+CMD ["sh", "-c", "echo 'SentinelSec Tool Integration Placeholder: Idle (Inactive in Phase 0/1)' && trap 'exit 0' TERM INT; while :; do sleep 3600; done"]

@@ -1,0 +1,28 @@
+# SentinelSec Celery Background Worker Container
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies
+COPY backend/requirements.txt /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+
+# Copy backend source code
+COPY backend /app/backend
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Run Celery worker for future background jobs (heartbeat only in Phase 0/1)
+CMD ["celery", "-A", "backend.app.celery_app:celery_app", "worker", "--loglevel=info", "--concurrency=2"]

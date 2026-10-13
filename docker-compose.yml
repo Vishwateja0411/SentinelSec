@@ -1,0 +1,129 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sentinelsec-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sentinelsec_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinelsec_secure_password_replace_in_prod}
+      POSTGRES_DB: ${POSTGRES_DB:-sentinelsec_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sentinelsec_user} -d ${POSTGRES_DB:-sentinelsec_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: sentinelsec-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend_net
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: sentinelsec-api
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-True}
+      PROJECT_NAME: ${PROJECT_NAME:-"SentinelSec Platform"}
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-sentinelsec_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinelsec_secure_password_replace_in_prod}
+      POSTGRES_DB: ${POSTGRES_DB:-sentinelsec_db}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sentinelsec_user}:${POSTGRES_PASSWORD:-sentinelsec_secure_password_replace_in_prod}@postgres:5432/${POSTGRES_DB:-sentinelsec_db}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      BACKEND_CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend_net
+      - frontend_net
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: sentinelsec-worker
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-sentinelsec_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinelsec_secure_password_replace_in_prod}
+      POSTGRES_DB: ${POSTGRES_DB:-sentinelsec_db}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sentinelsec_user}:${POSTGRES_PASSWORD:-sentinelsec_secure_password_replace_in_prod}@postgres:5432/${POSTGRES_DB:-sentinelsec_db}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend_net
+
+  scanners-placeholder:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.scanner_placeholder
+    container_name: sentinelsec-scanner-placeholder
+    restart: unless-stopped
+    networks:
+      - isolated_scanner_net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: sentinelsec-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - frontend_net
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  backend_net:
+    driver: bridge
+  frontend_net:
+    driver: bridge
+  isolated_scanner_net:
+    driver: bridge
+    internal: true
